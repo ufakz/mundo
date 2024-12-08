@@ -1,0 +1,40 @@
+<launch>
+<node name="Stage" pkg="stage_ros" type="stageros" args="$(find mundo)/worlds/mundo.world"/>
+
+<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" args="scan:=/robot_0/base_scan_1">
+	     <param name="odom_frame" value="/robot_0/odom"/>
+	     <param name="base_frame" value="robot_0/base_link"/>
+	     <param name="xmin" value="-15"/>
+	     <param name="ymin" value="-15"/>
+	     <param name="xmax" value="15"/>
+	     <param name="ymax" value="15"/>
+</node>
+
+
+<node name="moveRobot" pkg="mundo" type="move_robot" output="screen">
+    <param name="ID_ROBOT" type="int" value="1"/>
+    <param name="ALGOR" type="int" value="1"/>
+    <param name="CRIT_DIST" type="double" value="1.0"/>
+    <param name="D_OBJ" type="double" value="0.4"/>
+    <param name="V_MAX_DES" type="double" value="1.0"/>
+    <param name="V_MAX_ROT" type="double" value="0.8"/>
+    <param name="K_ROT_MIN" type="double" value="0.1"/>
+    <param name="K_ROT_MAX" type="double" value="0.25"/>
+    <param name="ORI_ERROR" type="double" value="0.45"/>
+    <param name="T_AVOID_OBS" type="double" value="2.0"/>
+    <param name="DIST_LEADER" type="double" value="2.0"/>
+    <param name="ROBOT_ROL" type="int" value="0"/>
+    <param name="ID_LEADER" type="int" value="0"/>
+    <param name="W_1" type="double" value="1.5"/>
+    <param name="W_2" type="double" value="3.0"/>
+    <param name="T_WAIT" type="int" value="175"/>
+</node>
+
+<node name="talkerGoals" pkg="mundo" type="talker_goals" output="screen">
+    <param name="X_GOAL" type="double" value="10.5"/>
+    <param name="Y_GOAL" type="double" value="6.2"/>
+    <param name="T_GOAL" type="double" value="1.0"/>
+</node>
+
+
+</launch>
