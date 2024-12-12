@@ -31,9 +31,9 @@
 </node>
 
 <node name="talkerGoals" pkg="mundo" type="talker_goals" output="screen">
-    <param name="X_GOAL" type="double" value="10.5"/>
-    <param name="Y_GOAL" type="double" value="6.2"/>
-    <param name="T_GOAL" type="double" value="1.0"/>
+    <param name="X_GOAL" type="double" value="0.0"/>
+    <param name="Y_GOAL" type="double" value="0.0"/>
+    <param name="T_GOAL" type="double" value="5.0"/>
 </node>
 
 
