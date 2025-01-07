@@ -1,14 +1,14 @@
 <launch>
 <node name="Stage" pkg="stage_ros" type="stageros" args="$(find mundo)/worlds/mundo.world"/>
 
-<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" args="scan:=/robot_0/base_scan_1">
+<!-- <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" args="scan:=/robot_0/base_scan_1">
 	     <param name="odom_frame" value="/robot_0/odom"/>
 	     <param name="base_frame" value="robot_0/base_link"/>
 	     <param name="xmin" value="-15"/>
 	     <param name="ymin" value="-15"/>
 	     <param name="xmax" value="15"/>
 	     <param name="ymax" value="15"/>
-</node>
+</node> -->
 
 
 <node name="moveRobot" pkg="mundo" type="move_robot" output="screen">

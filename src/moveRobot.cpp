@@ -45,6 +45,10 @@ double K_ROT_MIN; // minimum rotation
 double K_ROT_MAX; // maximum rotation
 double V_MAX_ROT; // maximum rotation velocity
 double D_OBJ; // distance to object
+double T_AVOID_OBS; // time to avoid obstacle
+double W_1; // weight of go to goal
+double W_2; // weigth of avoid obstacles
+int T_WAIT; // time to wait for potential fields algorithm
 int ALGOR; // algorithm
 
 geometry_msgs::Twist initialize_cmd_vel() {
@@ -136,15 +140,17 @@ void simple_avoidance(const sensor_msgs::LaserScan& laser_data) {
 			//ROS_INFO("No obstacle detected");
 			ros::Duration time_since_last_obstacle = ros::Time::now() - last_obstacle_time;
 			// If there was an obstacle in the last 2 seconds, move forward
-			if(time_since_last_obstacle.toSec() < 2.0) {
+
+			//TODO: Fix default time to use T_AVOID_OBS
+			if(time_since_last_obstacle.toSec() < T_AVOID_OBS) {
 				// ROS_INFO("Obstacle detected recently, moving straight");
-				stop(cmd_vel);
+				//stop(cmd_vel);
 				move_forward(cmd_vel);
 			}
 			// Otherwise, move towards the goal
 			else {
 				//ROS_INFO("No obstacle detected recently, moving towards goal");
-				stop(cmd_vel);
+				//stop(cmd_vel);
 				move_towards_goal(cmd_vel);
 			}
 		}
@@ -212,6 +218,9 @@ int main(int argc, char **argv) {
 	nh.getParam("/moveRobot/V_MAX_ROT", V_MAX_ROT);
 	nh.getParam("/moveRobot/D_OBJ", D_OBJ);
 	nh.getParam("/moveRobot/ALGOR", ALGOR);
+	nh.getParam("/moveRobot/T_AVOID_OBS", T_AVOID_OBS);
+	nh.getParam("/moveRobot/W_1", W_1);
+	nh.getParam("/moveRobot/W_2", W_2);
 
     //Build a string with the odom topoic
     string odom_topic_name = "robot_";
