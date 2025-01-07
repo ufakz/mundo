@@ -13,7 +13,7 @@
 
 <node name="moveRobot" pkg="mundo" type="move_robot" output="screen">
     <param name="ID_ROBOT" type="int" value="1"/>
-    <param name="ALGOR" type="int" value="1"/>
+    <param name="ALGOR" type="int" value="2"/>
     <param name="CRIT_DIST" type="double" value="1.0"/>
     <param name="D_OBJ" type="double" value="0.4"/>
     <param name="V_MAX_DES" type="double" value="1.0"/>
@@ -27,12 +27,12 @@
     <param name="ID_LEADER" type="int" value="0"/>
     <param name="W_1" type="double" value="1.5"/>
     <param name="W_2" type="double" value="3.0"/>
-    <param name="T_WAIT" type="int" value="175"/>
+    <param name="T_WAIT" type="int" value="200"/>
 </node>
 
 <node name="talkerGoals" pkg="mundo" type="talker_goals" output="screen">
-    <param name="X_GOAL" type="double" value="0.0"/>
-    <param name="Y_GOAL" type="double" value="0.0"/>
+    <param name="X_GOAL" type="double" value="-2.0"/>
+    <param name="Y_GOAL" type="double" value="-5.0"/>
     <param name="T_GOAL" type="double" value="5.0"/>
 </node>
 
