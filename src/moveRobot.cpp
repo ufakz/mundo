@@ -35,6 +35,7 @@ ros::Publisher cmd_vel_pub; // publisher for movement commands
 geometry_msgs::Point goal_point;
 Pose current_pose;
 ros::Time last_obstacle_time;
+ros::Time last_decision_time; // for potential fields tracking
 
 // constants from the launch file
 
@@ -45,6 +46,10 @@ double K_ROT_MIN; // minimum rotation
 double K_ROT_MAX; // maximum rotation
 double V_MAX_ROT; // maximum rotation velocity
 double D_OBJ; // distance to object
+double T_AVOID_OBS; // time to avoid obstacle
+double W_1; // weight of go to goal
+double W_2; // weigth of avoid obstacles
+int T_WAIT; // time to wait for potential fields algorithm
 int ALGOR; // algorithm
 
 geometry_msgs::Twist initialize_cmd_vel() {
@@ -136,20 +141,154 @@ void simple_avoidance(const sensor_msgs::LaserScan& laser_data) {
 			//ROS_INFO("No obstacle detected");
 			ros::Duration time_since_last_obstacle = ros::Time::now() - last_obstacle_time;
 			// If there was an obstacle in the last 2 seconds, move forward
-			if(time_since_last_obstacle.toSec() < 2.0) {
+
+			//TODO: Fix default time to use T_AVOID_OBS
+			if(time_since_last_obstacle.toSec() < T_AVOID_OBS) {
 				// ROS_INFO("Obstacle detected recently, moving straight");
-				stop(cmd_vel);
+				//stop(cmd_vel);
 				move_forward(cmd_vel);
 			}
 			// Otherwise, move towards the goal
 			else {
 				//ROS_INFO("No obstacle detected recently, moving towards goal");
-				stop(cmd_vel);
+				//stop(cmd_vel);
 				move_towards_goal(cmd_vel);
 			}
 		}
 	}
 	cmd_vel_pub.publish(cmd_vel);
+}
+
+void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
+    geometry_msgs::Twist cmd_vel = initialize_cmd_vel();
+
+    // Get current time
+    ros::Time current_time = ros::Time::now();
+
+    // Check if enough time has passed since the last decision
+    if ((current_time - last_decision_time).toSec() < (T_WAIT / 1000.0)) {
+        return;
+    }
+
+    last_decision_time = current_time;
+
+    // If the robot is at the goal, stop
+    if(is_at_goal()) {
+        ROS_INFO("At goal");
+        stop(cmd_vel);
+        //cmd_vel_pub.publish(cmd_vel);
+        return;
+    }
+
+    // Calculate the attractive force to goal
+	double dx = goal_point.x - current_pose.x;
+    double dy = goal_point.y - current_pose.y;
+    double distance_to_goal = sqrt(dx * dx + dy * dy);
+
+    if(distance_to_goal == 0) {
+        ROS_WARN("Robot is exactly at the goal position.");
+        stop(cmd_vel);
+        //cmd_vel_pub.publish(cmd_vel);
+        return;
+    }
+
+    // Need to convert to unit vector to get magnitudes for each direction
+    double Vobj_x = dx / distance_to_goal;
+    double Vobj_y = dy / distance_to_goal;
+
+	
+	// ------Obstacle avoidance part------
+
+	// Define accumulators
+    double Vobs_x = 0.0;
+    double Vobs_y = 0.0;
+
+    // Loop through every laser scan reading
+    for(size_t i = 0; i < laser_data.ranges.size(); i++) {
+        double d_i = laser_data.ranges[i];
+
+        if(d_i <= CRIT_DIST && d_i > 0) {
+            
+			// Get the angle of the current laser scan
+            double angle = laser_data.angle_min + i * laser_data.angle_increment;
+
+			double cos_angle = cos(angle);
+			double sin_angle = sin(angle);
+
+            double Xo_i = d_i * cos_angle;
+            double Yo_i = d_i * sin_angle;
+			ROS_INFO("Obstacle position in robot frame: X=%f, Y=%f", Xo_i, Yo_i);
+
+			// But the reading of the laser is in the robot reference frame
+			// We need to convert to the world frame.
+			
+			// [x_world] = [cos θ  -sin θ] [x_robot] + [x_robot_position]
+			// [y_world] = [sin θ   cos θ] [y_robot] + [y_robot_position]
+			// Still not sure if correct or requires the full transformation matrix (with Z)
+			Xo_i = Xo_i * cos_angle - Yo_i * sin_angle + current_pose.x;
+			Yo_i = Xo_i * sin_angle + Yo_i * cos_angle + current_pose.y;
+
+			ROS_INFO("Obstacle position in world frame: X=%f, Y=%f", Xo_i, Yo_i);
+
+            double vec_x = Xo_i - current_pose.x;
+			double vec_y = Yo_i - current_pose.y;
+
+            // Calculate the magnitude of the repulsive force
+            double magnitude = (CRIT_DIST - d_i) / CRIT_DIST;
+
+            // Normalize the repulsive vector
+            double norm = sqrt(vec_x * vec_x + vec_y * vec_y);
+            if(norm == 0) {
+                // Skip if the vector is zero to avoid division by zero
+                continue;
+            }
+            double unit_x = vec_x / norm;
+            double unit_y = vec_y / norm;
+
+            // Apply the magnitude to the unit vector and accumulate
+            Vobs_x += magnitude * unit_x;
+            Vobs_y += magnitude * unit_y;
+        }
+    }
+
+    // -------- Calculating the final Resultant Vector (Vf) --------
+
+    double Vf_x = W_1 * Vobj_x + W_2 * Vobs_x;
+    double Vf_y = W_1 * Vobj_y + W_2 * Vobs_y;
+
+    double desired_orientation = atan2(Vf_y, Vf_x);
+
+    double angle_diff = desired_orientation - current_pose.orientation;
+
+    //angle_diff = fmod(angle_diff + M_PI, 2 * M_PI) - M_PI;
+
+	angle_diff = fmod(angle_diff, 2 * M_PI);
+	// If the angle is more than PI, then the robot should turn from the other side
+	if(angle_diff > M_PI) {
+		angle_diff -= 2 * M_PI;
+	} else if(angle_diff < -M_PI) {
+		angle_diff += 2 * M_PI;
+	}
+
+	ROS_INFO("Angle difference: %f", angle_diff);
+
+	// Setting the angular velocity
+
+    // Proportional control for rotation
+    double angular_z = V_MAX_ROT * K_ROT_MAX * angle_diff;
+
+	ROS_INFO("Angular Z: %f", angular_z);
+
+    cmd_vel.angular.z = angular_z;
+
+    // Setting the linear velocity
+    if(abs(angle_diff) < ORI_ERROR) {
+        cmd_vel.linear.x = V_MAX_DES;
+    } else {
+        cmd_vel.linear.x = 0.0;
+    }
+
+    cmd_vel_pub.publish(cmd_vel);
 }
 
 
@@ -167,6 +306,7 @@ void callback_laser(const sensor_msgs::LaserScan& most_intense) {
 		simple_avoidance(most_intense);
 	} else if(ALGOR == 2) {
 		// Implement the second algorithm
+		potential_fields_avoidance(most_intense);
 	} else {
 		// Raise an error
 		ROS_ERROR("Invalid algorithm number");
@@ -212,6 +352,13 @@ int main(int argc, char **argv) {
 	nh.getParam("/moveRobot/V_MAX_ROT", V_MAX_ROT);
 	nh.getParam("/moveRobot/D_OBJ", D_OBJ);
 	nh.getParam("/moveRobot/ALGOR", ALGOR);
+	nh.getParam("/moveRobot/T_AVOID_OBS", T_AVOID_OBS);
+	nh.getParam("/moveRobot/W_1", W_1);
+	nh.getParam("/moveRobot/W_2", W_2);
+	nh.getParam("/moveRobot/T_WAIT", T_WAIT);
+
+	// Initialize last_decision_time to current time (once)
+    last_decision_time = ros::Time::now();
 
     //Build a string with the odom topoic
     string odom_topic_name = "robot_";
