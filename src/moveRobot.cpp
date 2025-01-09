@@ -22,6 +22,9 @@
 #include <sstream>
 #include <iostream>
 
+#define LEADER 0
+#define FOLLOWER 1
+
 using namespace std;
 using std::ostringstream;
 
@@ -32,7 +35,8 @@ struct Pose {
 };
 
 ros::Publisher cmd_vel_pub; // publisher for movement commands
-geometry_msgs::Point goal_point;
+geometry_msgs::Point goal_point; // global goal point
+geometry_msgs::Point target_point; // target point for the robot (goal_point for leader, equal to leader odom for follower)
 Pose current_pose;
 ros::Time last_obstacle_time;
 ros::Time last_decision_time; // for potential fields tracking
@@ -47,10 +51,14 @@ double K_ROT_MAX; // maximum rotation
 double V_MAX_ROT; // maximum rotation velocity
 double D_OBJ; // distance to object
 double T_AVOID_OBS; // time to avoid obstacle
-double W_1; // weight of go to goal
+double W_1; // weight of go to target
 double W_2; // weigth of avoid obstacles
 int T_WAIT; // time to wait for potential fields algorithm
 int ALGOR; // algorithm
+int ID_ROBOT; // robot id
+double DIST_LEADER; // distance from the follower to the leader
+int ROBOT_ROL; // role of the robot
+int ID_LEADER; // id of the leader
 
 geometry_msgs::Twist initialize_cmd_vel() {
 	geometry_msgs::Twist cmd_vel;
@@ -93,15 +101,31 @@ bool is_facing_obstacle(const sensor_msgs::LaserScan& laser_data) {
 	return false;
 }
 
-bool is_at_goal() {
-	double distance_to_goal = sqrt(pow(goal_point.x - current_pose.x, 2) + pow(goal_point.y - current_pose.y, 2));
+double calculate_distance(double x1, double y1, double x2, double y2) {
+	return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
+}
+
+bool is_close_to_leader() {
+	double distance_to_leader = calculate_distance(current_pose.x, current_pose.y, target_point.x, target_point.y);
+	return distance_to_leader <= DIST_LEADER;
+}
+
+bool is_at_target() {
+	// Find if the robot is at the target
+	double distance_to_target = calculate_distance(target_point.x, target_point.y, current_pose.x, current_pose.y);
+	return distance_to_target <= D_OBJ;	
+}
+
+bool is_leader_at_goal() {
+	// Find if the leader is at the goal
+	double distance_to_goal = calculate_distance(goal_point.x, goal_point.y, target_point.x, target_point.y);
 	return distance_to_goal <= D_OBJ;
 }
 
-void move_towards_goal(geometry_msgs::Twist& cmd_vel) {
+void move_towards_target(geometry_msgs::Twist& cmd_vel) {
 	Pose target_pose;
-	target_pose.x = goal_point.x;
-	target_pose.y = goal_point.y;
+	target_pose.x = target_point.x;
+	target_pose.y = target_point.y;
 	target_pose.orientation = calculate_target_pose(current_pose.x, current_pose.y, target_pose.x, target_pose.y);
 	double angle_diff = target_pose.orientation - current_pose.orientation;
 	// Take mod of the angle difference to get the minimum angle
@@ -123,37 +147,29 @@ void move_towards_goal(geometry_msgs::Twist& cmd_vel) {
 
 void simple_avoidance(const sensor_msgs::LaserScan& laser_data) {	
     geometry_msgs::Twist cmd_vel = initialize_cmd_vel();
-	// If the robot is at the goal, stop
-	if(is_at_goal()) {
-		ROS_INFO("At goal");
-		stop(cmd_vel);
-	}
-	else {
-		// ROS_INFO("Not at goal");
-		// If there is an obstacle, stop and turn
-		if(is_facing_obstacle(laser_data)) {
-			// ROS_INFO("Obstacle detected");
-			last_obstacle_time = ros::Time::now();
-			stop(cmd_vel);
-			rotate(cmd_vel);
-		}
-		else { // Path is clear
-			//ROS_INFO("No obstacle detected");
-			ros::Duration time_since_last_obstacle = ros::Time::now() - last_obstacle_time;
-			// If there was an obstacle in the last 2 seconds, move forward
 
-			//TODO: Fix default time to use T_AVOID_OBS
-			if(time_since_last_obstacle.toSec() < T_AVOID_OBS) {
-				// ROS_INFO("Obstacle detected recently, moving straight");
-				//stop(cmd_vel);
-				move_forward(cmd_vel);
-			}
-			// Otherwise, move towards the goal
-			else {
-				//ROS_INFO("No obstacle detected recently, moving towards goal");
-				//stop(cmd_vel);
-				move_towards_goal(cmd_vel);
-			}
+	// If there is an obstacle, stop and turn
+	if(is_facing_obstacle(laser_data)) {
+		// ROS_INFO("Obstacle detected");
+		last_obstacle_time = ros::Time::now();
+		stop(cmd_vel);
+		rotate(cmd_vel);
+	}
+	else { // Path is clear
+		//ROS_INFO("No obstacle detected");
+		ros::Duration time_since_last_obstacle = ros::Time::now() - last_obstacle_time;
+		// If there was an obstacle in the last 2 seconds, move forward
+		//TODO: Fix default time to use T_AVOID_OBS
+		if(time_since_last_obstacle.toSec() < T_AVOID_OBS) {
+			// ROS_INFO("Obstacle detected recently, moving straight");
+			//stop(cmd_vel);
+			move_forward(cmd_vel);
+		}
+		// Otherwise, move towards the target
+		else {
+			//ROS_INFO("No obstacle detected recently, moving towards target");
+			//stop(cmd_vel);
+			move_towards_target(cmd_vel);
 		}
 	}
 	cmd_vel_pub.publish(cmd_vel);
@@ -171,30 +187,22 @@ void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
     }
 
     last_decision_time = current_time;
+	
+    // Calculate the attractive force to target
+	double dx = target_point.x - current_pose.x;
+    double dy = target_point.y - current_pose.y;
+    double distance_to_target = sqrt(dx * dx + dy * dy);
 
-    // If the robot is at the goal, stop
-    if(is_at_goal()) {
-        ROS_INFO("At goal");
-        stop(cmd_vel);
-        //cmd_vel_pub.publish(cmd_vel);
-        return;
-    }
-
-    // Calculate the attractive force to goal
-	double dx = goal_point.x - current_pose.x;
-    double dy = goal_point.y - current_pose.y;
-    double distance_to_goal = sqrt(dx * dx + dy * dy);
-
-    if(distance_to_goal == 0) {
-        ROS_WARN("Robot is exactly at the goal position.");
+    if(distance_to_target == 0) {
+        ROS_WARN("Robot is exactly at the target position.");
         stop(cmd_vel);
         //cmd_vel_pub.publish(cmd_vel);
         return;
     }
 
     // Need to convert to unit vector to get magnitudes for each direction
-    double Vobj_x = dx / distance_to_goal;
-    double Vobj_y = dy / distance_to_goal;
+    double Vobj_x = dx / distance_to_target;
+    double Vobj_y = dy / distance_to_target;
 
 	
 	// ------Obstacle avoidance part------
@@ -217,7 +225,7 @@ void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
 
             double Xo_i = d_i * cos_angle;
             double Yo_i = d_i * sin_angle;
-			ROS_INFO("Obstacle position in robot frame: X=%f, Y=%f", Xo_i, Yo_i);
+			// ROS_INFO("Obstacle position in robot frame: X=%f, Y=%f", Xo_i, Yo_i);
 
 			// But the reading of the laser is in the robot reference frame
 			// We need to convert to the world frame.
@@ -228,7 +236,7 @@ void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
 			Xo_i = Xo_i * cos_angle - Yo_i * sin_angle + current_pose.x;
 			Yo_i = Xo_i * sin_angle + Yo_i * cos_angle + current_pose.y;
 
-			ROS_INFO("Obstacle position in world frame: X=%f, Y=%f", Xo_i, Yo_i);
+			// ROS_INFO("Obstacle position in world frame: X=%f, Y=%f", Xo_i, Yo_i);
 
             double vec_x = Xo_i - current_pose.x;
 			double vec_y = Yo_i - current_pose.y;
@@ -270,14 +278,14 @@ void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
 		angle_diff += 2 * M_PI;
 	}
 
-	ROS_INFO("Angle difference: %f", angle_diff);
+	// ROS_INFO("Angle difference: %f", angle_diff);
 
 	// Setting the angular velocity
 
     // Proportional control for rotation
     double angular_z = V_MAX_ROT * K_ROT_MAX * angle_diff;
 
-	ROS_INFO("Angular Z: %f", angular_z);
+	// ROS_INFO("Angular Z: %f", angular_z);
 
     cmd_vel.angular.z = angular_z;
 
@@ -301,15 +309,36 @@ void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
 
 
 void callback_laser(const sensor_msgs::LaserScan& most_intense) {
-	// Display algorithm number
-	if(ALGOR == 1) {
-		simple_avoidance(most_intense);
-	} else if(ALGOR == 2) {
-		// Implement the second algorithm
-		potential_fields_avoidance(most_intense);
-	} else {
-		// Raise an error
-		ROS_ERROR("Invalid algorithm number");
+	// Common checks
+	geometry_msgs::Twist cmd_vel = initialize_cmd_vel();
+	
+	// If the robot is the leader and is at the target, stop
+	if(ROBOT_ROL == LEADER && is_at_target()) {
+		// ROS_INFO("At target");
+		stop(cmd_vel);
+		cmd_vel_pub.publish(cmd_vel);
+	}
+	else if(ROBOT_ROL == FOLLOWER && is_leader_at_goal()) {
+		// ROS_INFO("Leader is at goal");
+		stop(cmd_vel);
+		cmd_vel_pub.publish(cmd_vel);
+	}
+	else if(ROBOT_ROL == FOLLOWER && is_close_to_leader()) {
+		// ROS_INFO("Leader is too close, stopping");
+		stop(cmd_vel);
+		cmd_vel_pub.publish(cmd_vel);
+	}
+	else {
+		// Display algorithm number
+		if(ALGOR == 1) {
+			simple_avoidance(most_intense);
+		} else if(ALGOR == 2) {
+			// Implement the second algorithm
+			potential_fields_avoidance(most_intense);
+		} else {
+			// Raise an error
+			ROS_ERROR("Invalid algorithm number");
+		}
 	}
 	ros::spinOnce(); 
 }
@@ -317,16 +346,28 @@ void callback_laser(const sensor_msgs::LaserScan& most_intense) {
 /***
 Get the odometry location.
 ***/
-void callback_odom(const nav_msgs::Odometry odom) {
 
-	double Xr = odom.pose.pose.position.x;
-	double Yr = odom.pose.pose.position.y;
-	double current_z=odom.pose.pose.orientation.z;
-    double current_w=odom.pose.pose.orientation.w;
-	double orientationr=(2.0*atan2(current_z,current_w));
-	current_pose.x = Xr;
-	current_pose.y = Yr;
-	current_pose.orientation = orientationr;
+// Function to convert 3d quaternion to 2d orientation
+Pose convert_odom_to_2d_orientation(const nav_msgs::Odometry& odom) {
+	Pose pose;
+	pose.x = odom.pose.pose.position.x;
+	pose.y = odom.pose.pose.position.y;
+	pose.orientation=(2.0*atan2(odom.pose.pose.orientation.z,odom.pose.pose.orientation.w));
+	return pose;
+}
+
+void callback_odom(const nav_msgs::Odometry odom) {
+	current_pose = convert_odom_to_2d_orientation(odom);
+	ros::spinOnce(); 
+}
+
+void callback_leader_odom(const nav_msgs::Odometry odom) {
+	Pose leader_pose = convert_odom_to_2d_orientation(odom);
+	if(ROBOT_ROL == FOLLOWER) {
+		target_point.x = leader_pose.x;
+		target_point.y = leader_pose.y;
+	}
+	ros::spinOnce(); 
 }
 
 /***
@@ -334,6 +375,9 @@ Get the goal location.
 ***/
 void callback_goals(const geometry_msgs::Point goal) {
 	goal_point = goal;
+	if(ROBOT_ROL == LEADER) {
+		target_point = goal;
+	}
 }
 
 int main(int argc, char **argv) {
@@ -341,46 +385,55 @@ int main(int argc, char **argv) {
 	ros::init(argc, argv, "moveRobot");
 	ros::Time::init();
 
-	ros::NodeHandle nh;
-    ros::NodeHandle nh_private("~");
-
-	nh.getParam("/moveRobot/V_MAX_DES", V_MAX_DES);
-	nh.getParam("/moveRobot/CRIT_DIST", CRIT_DIST);
-	nh.getParam("/moveRobot/ORI_ERROR", ORI_ERROR);
-	nh.getParam("/moveRobot/K_ROT_MIN", K_ROT_MIN);
-	nh.getParam("/moveRobot/K_ROT_MAX", K_ROT_MAX);
-	nh.getParam("/moveRobot/V_MAX_ROT", V_MAX_ROT);
-	nh.getParam("/moveRobot/D_OBJ", D_OBJ);
-	nh.getParam("/moveRobot/ALGOR", ALGOR);
-	nh.getParam("/moveRobot/T_AVOID_OBS", T_AVOID_OBS);
-	nh.getParam("/moveRobot/W_1", W_1);
-	nh.getParam("/moveRobot/W_2", W_2);
-	nh.getParam("/moveRobot/T_WAIT", T_WAIT);
+	ros::NodeHandle node_obj;
+	ros::NodeHandle nh_private("~");
+	nh_private.param<int>("ID_ROBOT", ID_ROBOT, 1);
+	nh_private.param<int>("ROBOT_ROL", ROBOT_ROL, LEADER);
+	nh_private.param<int>("ID_LEADER", ID_LEADER, 0);
+	nh_private.param<double>("DIST_LEADER", DIST_LEADER, 1.0);
+	nh_private.param<double>("V_MAX_DES", V_MAX_DES, 1.0);
+	nh_private.param<double>("CRIT_DIST", CRIT_DIST, 1.0);
+	nh_private.param<double>("ORI_ERROR", ORI_ERROR, 0.1);
+	nh_private.param<double>("K_ROT_MIN", K_ROT_MIN, 0.1);
+	nh_private.param<double>("K_ROT_MAX", K_ROT_MAX, 1.0);
+	nh_private.param<double>("V_MAX_ROT", V_MAX_ROT, 1.0);
+	nh_private.param<double>("D_OBJ", D_OBJ, 0.5);
+	nh_private.param<int>("ALGOR", ALGOR, 1);
+	nh_private.param<double>("T_AVOID_OBS", T_AVOID_OBS, 2.0);
+	nh_private.param<double>("W_1", W_1, 1.0);
+	nh_private.param<double>("W_2", W_2, 1.0);
+	nh_private.param<int>("T_WAIT", T_WAIT, 200);
 
 	// Initialize last_decision_time to current time (once)
     last_decision_time = ros::Time::now();
 
     //Build a string with the odom topoic
     string odom_topic_name = "robot_";
-	odom_topic_name += "0";
+	odom_topic_name += to_string(ID_ROBOT);
 	odom_topic_name += "/odom";
 	// subscribe to robot's odom topic "robot_X/base_scan"
-	ros::Subscriber odom_sub = nh.subscribe(odom_topic_name, 10, callback_odom);
+	ros::Subscriber odom_sub = node_obj.subscribe(odom_topic_name, 10, callback_odom);
 
+	//Build a string with the odom topic of the leader
+	string leader_odom_topic_name = "/robot_";
+	leader_odom_topic_name += to_string(ID_LEADER);
+	leader_odom_topic_name += "/odom";
+	// subscribe to robot's odom topic "robot_X/base_scan"
+	ros::Subscriber leader_odom_sub = node_obj.subscribe(leader_odom_topic_name, 10, callback_leader_odom);
 
     // subscribe to robot's laser scan topic "robot_X/base_scan"
 	string sonar_scan_topic_name = "robot_";
-	sonar_scan_topic_name += "0";
+	sonar_scan_topic_name += to_string(ID_ROBOT);
 	sonar_scan_topic_name += "/base_scan_1";
-	ros::Subscriber sub = nh.subscribe(sonar_scan_topic_name, 1, callback_laser);
+	ros::Subscriber sub = node_obj.subscribe(sonar_scan_topic_name, 1, callback_laser);
 
 	// subscribe to talker_goals topic
-	ros::Subscriber goal_sub = nh.subscribe("myGoals", 1, callback_goals);
+	ros::Subscriber goal_sub = node_obj.subscribe("myGoals", 1, callback_goals);
 
     string cmd_vel_topic_name = "robot_";
-	cmd_vel_topic_name += "0";
+	cmd_vel_topic_name += to_string(ID_ROBOT);
 	cmd_vel_topic_name += "/cmd_vel";
-	cmd_vel_pub = nh.advertise<geometry_msgs::Twist>(cmd_vel_topic_name, 10);
+	cmd_vel_pub = node_obj.advertise<geometry_msgs::Twist>(cmd_vel_topic_name, 10);
 
 	ros::spin();
 }
