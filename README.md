@@ -48,22 +48,21 @@ To run the simulation, use the following command:
 roslaunch mundo launch_stage.launch
 ```
 
-
 ## Configuration
 
-- ID_ROBOT: Robot ID
-- ROBOT_ROL: Role of the robot (LEADER or FOLLOWER)
-- ID_LEADER: ID of the leader robot
-- DIST_LEADER: Distance from the follower to the leader
-- ALGOR: Algorithm number for obstacle avoidance
-- CRIT_DIST: Critical distance for obstacle detection
-- D_OBJ: Distance to the object
-- V_MAX_DES: Desired maximum velocity
-- V_MAX_ROT: Maximum rotation velocity
-- K_ROT_MIN: Minimum rotation constant
-- K_ROT_MAX: Maximum rotation constant
-- ORI_ERROR: Orientation error
-- T_AVOID_OBS: Time to avoid obstacle
-- W_1: Weight of go-to-target
-- W_2: Weight of avoid obstacles
-- T_WAIT: Time to wait for potential fields algorithm
+- `ID_ROBOT`: Robot ID
+- `ROBOT_ROL`: Role of the robot (LEADER or FOLLOWER)
+- `ID_LEADER`: ID of the leader robot
+- `DIST_LEADER`: Distance from the follower to the leader
+- `ALGOR`: Algorithm number for obstacle avoidance
+- `CRIT_DIST`: Critical distance for obstacle detection
+- `D_OBJ`: Distance to the object
+- `V_MAX_DES`: Desired maximum velocity
+- `V_MAX_ROT`: Maximum rotation velocity
+- `K_ROT_MIN`: Minimum rotation constant
+- `K_ROT_MAX`: Maximum rotation constant
+- `ORI_ERROR`: Orientation error
+- `T_AVOID_OBS`: Time to avoid obstacle
+- `W_1`: Weight of go-to-target
+- `W_2`: Weight of avoid obstacles
+- `T_WAIT`: Time to wait for potential fields algorithm
