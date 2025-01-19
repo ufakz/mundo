@@ -15,7 +15,7 @@
     <param name="ROBOT_ROL" type="int" value="0"/>
     <param name="ID_LEADER" type="int" value="0"/>
     <param name="DIST_LEADER" type="double" value="2.0"/>
-    <param name="ALGOR" type="int" value="1"/>
+    <param name="ALGOR" type="int" value="2"/>
     <param name="CRIT_DIST" type="double" value="1.0"/>
     <param name="D_OBJ" type="double" value="0.4"/>
     <param name="V_MAX_DES" type="double" value="1.0"/>
@@ -26,7 +26,7 @@
     <param name="T_AVOID_OBS" type="double" value="2.0"/>
     <param name="W_1" type="double" value="1.5"/>
     <param name="W_2" type="double" value="3.0"/>
-    <param name="T_WAIT" type="int" value="200"/>
+    <param name="T_WAIT" type="int" value="175"/>
 </node>
 
 <node name="moveRobot1" pkg="mundo" type="move_robot" output="screen">
@@ -45,7 +45,7 @@
     <param name="T_AVOID_OBS" type="double" value="2.0"/>
     <param name="W_1" type="double" value="1.5"/>
     <param name="W_2" type="double" value="3.0"/>
-    <param name="T_WAIT" type="int" value="200"/>
+    <param name="T_WAIT" type="int" value="175"/>
 </node>
 
 <node name="talkerGoals" pkg="mundo" type="talker_goals" output="screen">

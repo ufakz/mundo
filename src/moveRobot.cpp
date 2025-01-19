@@ -1,9 +1,3 @@
-/**
- *  Created on: September 2019
- *  Author: jguerrero
- *  Example of odometry, laser and command vel topics
- */
-
 #include "ros/ros.h"
 #include "geometry_msgs/Twist.h"
 #include "sensor_msgs/LaserScan.h"
@@ -232,7 +226,6 @@ void potential_fields_avoidance(const sensor_msgs::LaserScan& laser_data) {
 			
 			// [x_world] = [cos θ  -sin θ] [x_robot] + [x_robot_position]
 			// [y_world] = [sin θ   cos θ] [y_robot] + [y_robot_position]
-			// Still not sure if correct or requires the full transformation matrix (with Z)
 			Xo_i = Xo_i * cos_angle - Yo_i * sin_angle + current_pose.x;
 			Yo_i = Xo_i * sin_angle + Yo_i * cos_angle + current_pose.y;
 

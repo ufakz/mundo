@@ -17,7 +17,7 @@ int main(int argc, char **argv)
     ROS_INFO("Y_GOAL=%lf", y_goal);
     ROS_INFO("T_GOAL=%lf", t_goal);
 
-    ros::Publisher number_publisher = node_obj.advertise<geometry_msgs::Point>("myGoals", 10);
+    ros::Publisher goal_publisher = node_obj.advertise<geometry_msgs::Point>("myGoals", 10);
     ros::Rate loop_rate(1.0 / t_goal); 
 
     while (ros::ok())
@@ -27,9 +27,10 @@ int main(int argc, char **argv)
         point.y = y_goal;
         point.z = 0.0;
         ROS_INFO("Goal: X=%f, Y=%f, Z=%f", point.x, point.y, point.z);
-        number_publisher.publish(point);
+        goal_publisher.publish(point);
         ros::spinOnce();
         loop_rate.sleep();
     }
+    
     return 0;
 }
